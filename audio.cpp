@@ -13,6 +13,7 @@
 typedef struct {
 	kiss_fft_scalar *freq [NFFT] = { NULL };
 	kiss_fft_scalar dat [NFFT] = { 0 };
+	size_t datlen = 0;
 } Program;
 
 Program *prg = NULL; size_t prglen = 0;
@@ -58,7 +59,9 @@ void fft (void) {
 		for (size_t prgpos = 0; prgpos != prglen; prgpos ++) {
 			for (size_t i = 0; i != NFFT; i ++) {
 				if (taud [i] [prgpos] > avglevel) {
-					prg [prgpos].dat [
+					prg [prgpos].dat [prg [prgpos].datlen] = i;
+					prg [prgpos].freq [i] = &prg [prgpos].dat [prg [prgpos].datlen];
+					prg [prgpos].datlen ++;
 				}
 			}
 		}
