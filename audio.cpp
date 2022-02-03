@@ -15,15 +15,49 @@
 
 #define NFFT 1024
 #define SRATE 44100
-#define SENSE 1
+#define OCTAVES 8
+
+
+// very quick and dirty stack thing
+class Stack {
+	public:
+		typedef int StackElement;
+		
+		Stack (void) {
+			size = 16; top = 0;
+			stack = (StackElement *) malloc (sizeof (StackElement) * size);
+		}
+		
+		~Stack (void) {
+			free (stack);
+		}
+		
+		void push (StackElement thing) {
+			while (top >= size)
+				stack = (StackElement *) realloc (sizeof (StackElement) * (size += size));
+			stack [top ++] = thing;
+		}
+		
+		StackElement pull (void) {	return stack [top --];	}
+		StackElement peek (void) {	return stack [top];	}
+		
+		void pull (StackElement *thing) {	*thing = pull ();	}
+		void peek (StackElement *thing) {	*thing = peek ();	}
+		
+		StackElement *stack;
+		size_t size, top;
+};
+
+typedef u_int_least16_t ThreadCmd;
 
 typedef struct {
-	kiss_fft_scalar *freq [NFFT] = { NULL };
-	kiss_fft_scalar dat [NFFT] = { 0 };
-	size_t datlen = 0;
-} Program;
+	size_t pos = 0;
+	ThreadCmd *prg;
+	size_t len = 0;
+	Stack stk;
+} Thread;
 
-Program *prg = NULL; size_t prglen = 0;
+Thread Program [OCTAVES + 1];
 
 kiss_fft_scalar *audbuf = NULL; size_t audlen = 0;
 
@@ -39,18 +73,18 @@ size_t get_fd_len (int fd) {
 }
 
 void fft (void) {
-	prglen = audlen / EFFECTIVE_NFFT;
+	size_t segs = audlen / EFFECTIVE_NFFT;
 	
 	
 	float avglevel = 0;
-	float taud [NFFT + 1] [prglen + 1]; // AMP = [FREQ] [POS]
+	float taud [NFFT + 1] [segs + 1]; // AMP = [FREQ] [POS]
 	
 	
 	// STAGE 1:  FFT routine
 	{	kiss_fftr_cfg kiss = kiss_fftr_alloc (EFFECTIVE_NFFT, 0, NULL, NULL);
 		
 		double totalavg = 0;
-		for (size_t audpos = 0; audpos != prglen; audpos ++) {
+		for (size_t audpos = 0; audpos != segs; audpos ++) {
 			float segavg = 0;
 			
 			// Process audio segment	
@@ -64,14 +98,23 @@ void fft (void) {
 			
 			totalavg += segavg / NFFT;
 		}
-		avglevel = totalavg / prglen;
+		avglevel = totalavg / segs;
 		
 		kiss_fftr_free (kiss);
 	}
 	
 	
-	prg = new Program [prglen];
-	// STAGE 2: take out noise
+	// STAGE 2: parse FFT into "threads"
+	
+	{	for (size_t audpos = 0; audpos != segs; audpos ++) {
+			for (size_t i = 0; i != NFFT; i ++) {
+				if (taud [i] [audpos] > avglevel)
+					freqs [i] [audpos] = true;
+			}
+		}
+	}
+	
+	/*
 	{	for (size_t prgpos = 0; prgpos != prglen; prgpos ++) {
 			for (size_t i = 0; i != NFFT; i ++) {
 				if (taud [i] [prgpos] > avglevel) {
@@ -81,7 +124,7 @@ void fft (void) {
 				}
 			}
 		}
-	}
+	}*/
 }
 
 
